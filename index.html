@@ -1,0 +1,697 @@
+<!doctype html>
+<html lang="pt">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sincronizador de Pastas</title>
+<meta name="theme-color" content="#1565c0">
+<meta name="description" content="Compara e sincroniza pastas de trabalho.">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="favicon.ico" sizes="any">
+<link rel="icon" href="icon-192.png" type="image/png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<style>
+:root{
+  --bg:#eef1f4; --surface:#ffffff; --fg:#101a24; --muted:#4a5a69; --line:#c3ced8; --head:#dbe3ea; --zebra:#f6f8fa;
+  --navy:#1a3a5c; --navy-fg:#ffffff;
+  --cmp:#1565c0; --cmp-fg:#ffffff; --sync:#1b8a3a; --sync-fg:#ffffff; --stop:#c62828; --stop-fg:#ffffff;
+  --pick:#00707a; --title:#1a3a5c; --path:#0b4f8a;
+  --go:#ffffff; --go-bg:#1b8a3a; --back:#ffffff; --back-bg:#1565c0; --del:#ffffff; --del-bg:#c62828;
+  --flat:#e3e8ed; --flat-fg:#4a5a69; --warn:#8a5a00; --warn-bg:#fdf1d3; --err:#b71c1c;
+  --sans:"Segoe UI",system-ui,Arial,sans-serif; --mono:Consolas,"Cascadia Mono",ui-monospace,monospace;
+}
+@media (prefers-color-scheme: dark){:root{
+  --bg:#0d1319; --surface:#151d26; --fg:#f2f6fa; --muted:#b3c1cf; --line:#34455a; --head:#22303f; --zebra:#1a2430;
+  --navy:#6fb1ff; --navy-fg:#08131f;
+  --cmp:#3d8bff; --cmp-fg:#ffffff; --sync:#2fb457; --sync-fg:#04150a; --stop:#ff5a4f; --stop-fg:#1c0503;
+  --pick:#35d0dc; --title:#8cc4ff; --path:#9fd4ff;
+  --go:#04150a; --go-bg:#4cd27a; --back:#041226; --back-bg:#6fb1ff; --del:#240504; --del-bg:#ff7a70;
+  --flat:#2a3746; --flat-fg:#c5d1dd; --warn:#ffd166; --warn-bg:#3d3113; --err:#ff8a80; color-scheme:dark}}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.4 var(--sans)}
+.app{display:grid;grid-template-columns:250px minmax(0,1fr);height:100%}
+aside{background:var(--surface);border-right:1px solid var(--line);padding:14px;display:flex;flex-direction:column;gap:12px;overflow:auto}
+main{display:flex;flex-direction:column;min-width:0;height:100%}
+h1{font-size:17px;margin:0;color:var(--navy)}
+h2{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:0;font-weight:600}
+button{font:inherit;border:1px solid var(--line);background:var(--surface);color:var(--fg);border-radius:5px;padding:6px 11px;cursor:pointer}
+button:hover:not(:disabled){border-color:var(--navy)}
+button:disabled{opacity:.5;cursor:default}
+button.primary{background:var(--navy);color:var(--navy-fg);border-color:var(--navy);font-weight:600}
+button.big{padding:9px 18px;font-size:15px}
+button:focus-visible,select:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px solid var(--navy);outline-offset:1px}
+select,input[type=text],textarea{font:inherit;border:1px solid var(--line);border-radius:5px;background:var(--surface);color:var(--fg);padding:5px 7px;max-width:100%}
+textarea{font-family:var(--mono);font-size:12.5px;width:100%;resize:vertical}
+.profiles{display:flex;flex-direction:column;gap:3px}
+.profiles button{text-align:left;border-color:transparent;display:flex;flex-direction:column;gap:1px}
+.profiles button[aria-current="true"]{background:var(--navy);color:var(--navy-fg)}
+.profiles small{opacity:.75;font-size:11.5px}
+.row{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.field{display:flex;flex-direction:column;gap:4px}
+.field label,.lbl{font-size:12px;color:var(--muted)}
+.chk{display:flex;gap:6px;align-items:flex-start;font-size:13px}
+.toolbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;padding:12px 14px;background:var(--surface);border-bottom:1px solid var(--line)}
+.toolbar .sp{flex:1}
+.folders{display:grid;grid-template-columns:minmax(0,1fr) 40px minmax(0,1fr);gap:8px;padding:10px 14px;align-items:end;border-bottom:1px solid var(--line)}
+.folder{display:flex;flex-direction:column;gap:4px;min-width:0}
+.folder .pick{display:flex;gap:6px;min-width:0}
+.folder .name{flex:1;min-width:0;border:1px solid var(--line);border-radius:5px;background:var(--surface);padding:6px 8px;font-family:var(--mono);font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.folder .name.none{color:var(--muted);font-family:var(--sans)}
+.folder .hint{font-size:12px;color:var(--muted);font-family:var(--mono);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.modearrow{text-align:center;font-size:20px;color:var(--navy);padding-bottom:22px}
+.banner{margin:10px 14px 0;padding:10px 12px;border-radius:6px;background:var(--warn-bg);color:var(--warn);font-size:13.5px}
+.gridwrap{flex:1;min-height:0;overflow:auto;background:var(--surface);margin:10px 14px 0;border:1px solid var(--line);border-radius:6px}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th{position:sticky;top:0;background:var(--head);text-align:left;font-weight:600;padding:6px 8px;border-bottom:1px solid var(--line);white-space:nowrap;z-index:1}
+td{padding:3px 8px;border-bottom:1px solid var(--line);white-space:nowrap;font-variant-numeric:tabular-nums}
+td.path{font-family:var(--mono);font-size:12.5px;max-width:420px;overflow:hidden;text-overflow:ellipsis}
+td.num,th.num{text-align:right}
+td.none{color:var(--muted)}
+td.mid,th.mid{text-align:center;border-left:1px solid var(--line);border-right:1px solid var(--line)}
+td.note{color:var(--warn);font-size:12px;white-space:normal;min-width:140px}
+.act{min-width:86px;padding:2px 8px;border-radius:4px;border:1px solid transparent;font-size:12.5px;font-weight:600}
+.act.R{background:var(--go-bg);color:var(--go)} .act.L{background:var(--back-bg);color:var(--back)}
+.act.DL,.act.DR{background:var(--del-bg);color:var(--del)} .act.N,.act.E{background:var(--flat);color:var(--muted)}
+.act.err{outline:2px solid var(--del)}
+.empty{padding:26px;color:var(--muted);text-align:center;white-space:normal}
+.status{display:flex;flex-wrap:wrap;gap:8px 18px;align-items:center;padding:10px 14px;font-size:13px}
+.status b{font-family:var(--mono)}
+.pill{border-radius:999px;padding:2px 10px;font-size:12.5px}
+.pill.R{background:var(--go-bg);color:var(--go)} .pill.L{background:var(--back-bg);color:var(--back)} .pill.D{background:var(--del-bg);color:var(--del)} .pill.N{background:var(--flat);color:var(--muted)}
+progress{width:220px;height:14px}
+.log{margin:0 14px 12px;max-height:130px;overflow:auto;background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:8px 10px;font-family:var(--mono);font-size:12px;white-space:pre-wrap}
+.log .e{color:var(--del)}
+details summary{cursor:pointer;font-size:13px;color:var(--navy);font-weight:600}
+details .body{display:flex;flex-direction:column;gap:10px;padding-top:10px}
+.help{font-size:12px;color:var(--muted)}
+[hidden]{display:none!important}
+@media (max-width:800px){.app{grid-template-columns:1fr;height:auto}main{height:auto}.gridwrap{max-height:60vh}.folders{grid-template-columns:1fr}.modearrow{padding:0}}
+
+/* ---- distinct colours per control ---- */
+h1{color:var(--title)} h2{color:var(--muted)}
+#bCompare{background:var(--cmp);border-color:var(--cmp);color:var(--cmp-fg)}
+#bSync{background:var(--sync);border-color:var(--sync);color:var(--sync-fg)}
+#bSync:disabled{background:var(--flat);border-color:var(--line);color:var(--flat-fg);opacity:.75}
+#bStop{background:var(--stop);border-color:var(--stop);color:var(--stop-fg);font-weight:600}
+#bL,#bR{border-color:var(--pick);color:var(--pick);font-weight:600}
+#pNew{border-color:var(--sync);color:var(--sync);font-weight:600}
+#bInstall{background:var(--cmp);border-color:var(--cmp);color:var(--cmp-fg);font-weight:700;padding:9px 12px}
+#pDel,#pReset{border-color:var(--stop);color:var(--stop);font-weight:600}
+button:hover:not(:disabled){filter:brightness(1.12)}
+.profiles button{border:1px solid var(--line);border-left:4px solid var(--line)}
+.profiles button[aria-current="true"]{background:var(--cmp);color:var(--cmp-fg);border-color:var(--cmp);border-left-color:var(--warn)}
+.field label,.lbl{color:var(--muted);font-weight:600}
+.folder .name{color:var(--path);font-weight:600;border-color:var(--pick)}
+.folder .name.none{color:var(--muted);font-weight:400;border-color:var(--line)}
+.folder .hint{color:var(--muted)}
+.modearrow{color:var(--warn)}
+th{color:var(--title);border-bottom:2px solid var(--cmp)}
+tbody tr:nth-child(even) td{background:var(--zebra)}
+tbody tr:hover td{background:var(--head)}
+td.path{color:var(--path)}
+td.note{color:var(--warn);font-weight:600}
+.act{font-weight:700;border:0}
+.act.N{background:transparent;color:var(--flat-fg);border:1px dashed var(--muted)}
+.act.E{background:var(--flat);color:var(--flat-fg)}
+.act:disabled{opacity:1}
+.act.err{outline:2px solid var(--err)}
+.pill{font-weight:700}
+.pill.N{background:var(--flat);color:var(--flat-fg)}
+.status{color:var(--fg)}
+.log{color:var(--fg)} .log .e{color:var(--err)}
+details summary{color:var(--pick)}
+.help{color:var(--muted)}
+
+/* ---- summary bar at the top ---- */
+.status{background:var(--head);border-bottom:2px solid var(--cmp);padding:10px 14px;font-size:15px;min-height:46px;gap:8px 12px}
+.status:empty{display:none}
+.status .msg{font-weight:700;padding:3px 12px;border-radius:5px}
+.status .msg.ok{background:var(--go-bg);color:var(--go)}
+.status .msg.todo{background:var(--warn);color:var(--bg)}
+.status .msg.info{background:var(--back-bg);color:var(--back)}
+.pill{font-size:14px;padding:3px 12px}
+.pill.N{background:var(--warn-bg);color:var(--warn);border:1px solid var(--warn)}
+.pill.E{background:transparent;color:var(--sync);border:1px solid var(--sync)}
+.pill.zero{opacity:.45}
+td.note .ar{font-size:17px;font-weight:700;line-height:1;vertical-align:-1px}
+td.note.toL{color:var(--path)} td.note.toR{color:var(--warn)} td.note.both{color:var(--err)}
+
+/* ---- progress window ---- */
+.ov{position:fixed;inset:0;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:center;z-index:50;padding:16px}
+.dlg{background:var(--surface);border:1px solid var(--cmp);border-radius:10px;width:min(720px,100%);padding:18px 20px;display:flex;flex-direction:column;gap:12px;box-shadow:0 18px 60px rgba(0,0,0,.5)}
+.dlg h3{margin:0;font-size:18px;color:var(--title)}
+.dlg .file{font-family:var(--mono);font-size:13px;color:var(--path);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-height:18px}
+.bar{height:22px;border-radius:6px;background:var(--flat);overflow:hidden;position:relative}
+.bar i{display:block;height:100%;width:0;background:var(--sync);transition:width .25s linear}
+.bar span{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;color:var(--fg)}
+.kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+.kpi{background:var(--head);border-radius:6px;padding:8px 10px;display:flex;flex-direction:column;gap:2px;min-width:0}
+.kpi .k{font-size:11.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);font-weight:600}
+.kpi .v{font-family:var(--mono);font-size:17px;font-weight:700;white-space:nowrap}
+.kpi.speed .v{color:var(--pick)} .kpi.time .v{color:var(--warn)} .kpi.left .v{color:var(--title)} .kpi.files .v{color:var(--sync)}
+.chartbox{border:1px solid var(--line);border-radius:6px;padding:8px 8px 4px;background:var(--bg)}
+.chartbox .cap{display:flex;justify-content:space-between;font-size:12px;color:var(--muted);padding:0 2px 4px}
+#pvChart{display:block;width:100%;height:170px}
+.dlg .foot{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.dlg .foot .res{font-weight:700}
+.dlg .foot .res.ok{color:var(--sync)} .dlg .foot .res.bad{color:var(--err)}
+#pvStop{background:var(--stop);border-color:var(--stop);color:var(--stop-fg);font-weight:600}
+@media (max-width:560px){.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+.dlg{max-height:calc(100vh - 32px);overflow:auto}
+#pvChart{height:120px}
+.mini{display:block;width:100%;height:92px}
+.charts2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.sw{display:inline-block;width:11px;height:11px;border-radius:2px;margin-right:6px;vertical-align:-1px}
+.sw.b{background:var(--sync)} .sw.i{background:var(--cmp)}
+.proc{display:flex;flex-wrap:wrap;gap:6px 22px;font-size:13.5px}
+.proc b{font-family:var(--mono)}
+.proc .warn{color:var(--err);font-weight:700;cursor:pointer;text-decoration:underline}
+#ev{z-index:60}
+#ev .dlg{border-color:var(--stop);width:min(860px,100%)}
+#ev h3{color:var(--err)}
+#ev .scroll{max-height:50vh;overflow:auto;border:1px solid var(--line);border-radius:6px}
+#ev td{white-space:normal;vertical-align:top}
+#ev td.path{max-width:none;min-width:200px;overflow-wrap:anywhere}
+#ev td.why{color:var(--err);font-weight:600}
+#ev td.raw{color:var(--muted);font-size:12px}
+@media (max-width:620px){.charts2{grid-template-columns:1fr}}
+
+.done{border:1px solid var(--line);border-radius:6px;overflow:hidden}
+.done .cap{display:flex;justify-content:space-between;gap:10px;font-size:12px;color:var(--muted);padding:6px 10px;background:var(--head);font-weight:600}
+.done .cap b{color:var(--sync);font-family:var(--mono);font-size:13px}
+.done .list{max-height:150px;overflow:auto}
+.done table{font-size:12.5px}
+.done td{padding:3px 10px}
+.done td.op{width:1%;font-weight:700}
+.done td.op.R{color:var(--sync)} .done td.op.L{color:var(--cmp)} .done td.op.D{color:var(--stop)} .done td.op.X{color:var(--err)}
+.done td.sz{text-align:right;font-family:var(--mono);font-weight:700;color:var(--fg);width:1%}
+.done td.tm{text-align:right;color:var(--muted);width:1%}
+.done tr.bad td.path{color:var(--err)}
+.done .none{padding:10px;color:var(--muted);font-size:13px}
+
+/* ---- confirmation window ---- */
+#cf{z-index:55}
+#cf .dlg{width:min(980px,100%);border-color:var(--warn)}
+#cf h3{color:var(--title)}
+.cf-meta{display:grid;grid-template-columns:max-content 1fr;gap:4px 14px;font-size:13.5px}
+.cf-meta b{color:var(--muted);font-weight:600}
+.cf-meta span{font-family:var(--mono);color:var(--path);overflow-wrap:anywhere}
+.cf-pills{display:flex;flex-wrap:wrap;gap:8px}
+.cf-warn{display:flex;flex-direction:column;gap:6px}
+.cf-warn div{padding:8px 12px;border-radius:6px;background:var(--warn-bg);color:var(--warn);font-size:13.5px;font-weight:600}
+.cf-warn div.red{background:var(--del-bg);color:var(--del)}
+#cf .scroll{max-height:46vh;overflow:auto;border:1px solid var(--line);border-radius:6px}
+#cf .sec td{background:var(--head)!important;font-weight:700;color:var(--title);font-size:13px}
+#cf td{white-space:nowrap}
+#cf td.path{max-width:420px;overflow:hidden;text-overflow:ellipsis}
+#cf td.what{font-size:12.5px;color:var(--muted);white-space:normal;min-width:180px}
+#cf td.what.conf{color:var(--err);font-weight:700}
+#cf td.what.over{color:var(--warn);font-weight:600}
+#cfOk{background:var(--sync);border-color:var(--sync);color:var(--sync-fg);font-weight:700;padding:9px 18px}
+#cfBack{border-color:var(--pick);color:var(--pick);font-weight:700;padding:9px 18px}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside>
+    <h1>Sincronizador de Pastas</h1>
+    <h2>Configurações</h2>
+    <div class="profiles" id="profiles"></div>
+    <div class="row"><button type="button" id="pNew">Nova</button><button type="button" id="pDel">Apagar</button></div>
+    <div class="field"><label for="pName">Nome</label><input type="text" id="pName"></div>
+    <details id="opts">
+      <summary>Opções desta configuração</summary>
+      <div class="body">
+        <div class="field"><label for="pDelMode">Ficheiros a eliminar</label>
+          <select id="pDelMode"><option value="trash">Mover para a pasta _apagados</option><option value="perm">Apagar definitivamente</option></select></div>
+        <label class="chk"><input type="checkbox" id="pContent"> Comparar o conteúdo quando o tamanho é igual e a data difere (mais lento)</label>
+        <div class="field"><label for="pEx">Excluir (um padrão por linha, * = qualquer texto)</label><textarea id="pEx" rows="6" spellcheck="false"></textarea></div>
+        <div class="field"><label for="pHL">Caminho esperado à esquerda (só lembrete)</label><input type="text" id="pHL"></div>
+        <div class="field"><label for="pHR">Caminho esperado à direita (só lembrete)</label><input type="text" id="pHR"></div>
+        <button type="button" id="pReset">Esquecer histórico desta configuração</button>
+      </div>
+    </details>
+    <button type="button" id="bInstall" hidden>Instalar como aplicação</button>
+    <p class="help">Funciona no Edge e no Chrome. O browser pede autorização de acesso às pastas em cada sessão. Os ficheiros copiados ficam com a data da cópia; o histórico guardado neste browser evita que voltem a aparecer como diferentes.</p>
+  </aside>
+
+  <main>
+    <div class="toolbar">
+      <button type="button" class="primary big" id="bCompare">Comparar</button>
+      <div class="field"><span class="lbl">Tipo de sincronização</span>
+        <select id="pMode" aria-label="Tipo de sincronização">
+          <option value="two">Duas vias ⇄</option>
+          <option value="update">Atualizar → (copia novos e alterados, não apaga)</option>
+          <option value="mirror">Espelho → (a direita fica igual à esquerda)</option>
+        </select></div>
+      <label class="chk"><input type="checkbox" id="showEq"> Mostrar ficheiros iguais</label>
+      <span class="sp"></span>
+      <button type="button" id="bStop" hidden>Parar</button>
+      <button type="button" class="primary big" id="bSync" disabled>Sincronizar</button>
+    </div>
+    <div class="status" id="status" role="status" aria-live="polite"></div>
+    <div class="banner" id="unsupported" hidden>Este browser não permite a uma página aceder a pastas. Abra este ficheiro no Microsoft Edge ou no Google Chrome.</div>
+    <div class="folders">
+      <div class="folder"><span class="lbl">Pasta da esquerda</span>
+        <div class="pick"><div class="name none" id="nL">Nenhuma pasta escolhida</div><button type="button" id="bL">Procurar</button></div>
+        <div class="hint" id="hL"></div></div>
+      <div class="modearrow" id="arrow">⇄</div>
+      <div class="folder"><span class="lbl">Pasta da direita</span>
+        <div class="pick"><div class="name none" id="nR">Nenhuma pasta escolhida</div><button type="button" id="bR">Procurar</button></div>
+        <div class="hint" id="hR"></div></div>
+    </div>
+    <div class="gridwrap"><table id="grid"></table></div>
+    <div class="log" id="log" hidden></div>
+  </main>
+</div>
+
+<div class="ov" id="pv" hidden>
+  <div class="dlg" role="dialog" aria-modal="true" aria-labelledby="pvTitle">
+    <h3 id="pvTitle">A sincronizar…</h3>
+    <div class="file" id="pvFile"></div>
+    <div class="bar"><i id="pvBar"></i><span id="pvPct">0%</span></div>
+    <div class="kpis">
+      <div class="kpi speed"><span class="k">Velocidade</span><span class="v" id="pvSpeed">—</span></div>
+      <div class="kpi time"><span class="k">Tempo decorrido</span><span class="v" id="pvTime">00:00</span></div>
+      <div class="kpi left"><span class="k">Tempo restante</span><span class="v" id="pvLeft">—</span></div>
+      <div class="kpi files"><span class="k">Ficheiros</span><span class="v" id="pvFiles">0 / 0</span></div>
+    </div>
+    <div class="chartbox">
+      <div class="cap"><span>Velocidade de cópia ao longo do tempo</span><span id="pvCap"></span></div>
+      <canvas id="pvChart"></canvas>
+    </div>
+    <div class="charts2">
+      <div class="chartbox"><div class="cap"><span><i class="sw b"></i>Bytes</span><span id="pvCapB"></span></div><canvas id="pvBytes" class="mini"></canvas></div>
+      <div class="chartbox"><div class="cap"><span><i class="sw i"></i>Itens</span><span id="pvCapI"></span></div><canvas id="pvItems" class="mini"></canvas></div>
+    </div>
+    <div class="done">
+      <div class="cap"><span>Ficheiros tratados e tamanho de cada um</span><span>Total copiado: <b id="pvCopied">0 B</b></span></div>
+      <div class="list" id="pvListBox"><table><tbody id="pvList"></tbody></table><div class="none" id="pvNone">Ainda nenhum ficheiro tratado.</div></div>
+    </div>
+    <div class="proc"><span>Processado: <b id="pvDone">0 (0 B)</b></span><span>Restante: <b id="pvRem">0 (0 B)</b></span><span class="warn" id="pvWarn" hidden></span></div>
+    <div class="foot"><span class="res" id="pvRes"></span><span><button type="button" id="pvStop">Parar</button> <button type="button" id="pvClose" hidden>Fechar</button></span></div>
+  </div>
+</div>
+<div class="ov" id="cf" hidden>
+  <div class="dlg" role="alertdialog" aria-modal="true" aria-labelledby="cfTitle">
+    <h3 id="cfTitle">Confirmar sincronização</h3>
+    <div class="cf-meta" id="cfMeta"></div>
+    <div class="cf-pills" id="cfPills"></div>
+    <div class="cf-warn" id="cfWarn"></div>
+    <div class="scroll"><table><thead><tr><th class="mid">Ação</th><th>Ficheiro / camada</th><th class="num">Tamanho</th><th>Data de origem</th><th>O que vai acontecer</th></tr></thead><tbody id="cfBody"></tbody></table></div>
+    <div class="foot"><span class="res">Tem mesmo a certeza desta sincronização?</span><span><button type="button" id="cfBack">← Voltar atrás</button> <button type="button" id="cfOk">Sim, tenho a certeza: sincronizar</button></span></div>
+  </div>
+</div>
+<div class="ov" id="ev" hidden>
+  <div class="dlg" role="alertdialog" aria-modal="true" aria-labelledby="evTitle">
+    <h3 id="evTitle">Erros na sincronização</h3>
+    <p class="help" id="evSub" style="margin:0"></p>
+    <div class="scroll"><table><thead><tr><th>Ficheiro</th><th>Operação</th><th>O que aconteceu</th><th>Mensagem do sistema</th></tr></thead><tbody id="evBody"></tbody></table></div>
+    <div class="foot"><span class="res" id="evCopied"></span><span><button type="button" id="evCopy">Copiar lista</button> <button type="button" id="evClose">Fechar</button></span></div>
+  </div>
+</div>
+<script>
+'use strict';
+const $=id=>document.getElementById(id);
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const TRASH='_apagados';
+const DEFAULT_EX=['*.crswap','*.ffs_db','*.ffs_lock','*.ffs_tmp','~$*','Thumbs.db','desktop.ini','*.gpkg-wal','*.gpkg-shm','*.gpkg-journal'].join('\n');
+const SUPPORTED='showDirectoryPicker' in window;
+
+/* ---------------- storage (IndexedDB keeps profiles, folder handles and last-sync history) ---------------- */
+let _db;
+function db(){return _db||(_db=new Promise((res,rej)=>{const r=indexedDB.open('sincronizador-pastas',1);
+  r.onupgradeneeded=()=>{r.result.createObjectStore('profiles',{keyPath:'id'});r.result.createObjectStore('state');};
+  r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error);}));}
+async function tx(store,mode,fn){const d=await db();return new Promise((res,rej)=>{const t=d.transaction(store,mode);const rq=fn(t.objectStore(store));t.oncomplete=()=>res(rq&&rq.result);t.onerror=()=>rej(t.error);t.onabort=()=>rej(t.error);});}
+const dbAll=s=>tx(s,'readonly',o=>o.getAll());
+const dbGet=(s,k)=>tx(s,'readonly',o=>o.get(k));
+const dbPut=(s,v,k)=>tx(s,'readwrite',o=>k===undefined?o.put(v):o.put(v,k));
+const dbDel=(s,k)=>tx(s,'readwrite',o=>o.delete(k));
+
+/* ---------------- state ---------------- */
+let profiles=[], cur=null, rows=[], state=new Map(), busy=false, stop=false, compared=false;
+const newProfile=(o)=>Object.assign({id:'p'+Date.now()+Math.random().toString(36).slice(2,6),name:'Nova configuração',mode:'two',hintL:'',hintR:'',exclude:DEFAULT_EX,del:'trash',content:false,L:null,R:null,last:null},o);
+async function loadProfiles(){
+  try{profiles=await dbAll('profiles');}catch(e){profiles=[];}
+  if(!profiles.length){
+    profiles=[newProfile({id:'gia',name:'GIA_EXPORT_TO_QGIS',mode:'two',hintL:'',hintR:''}),
+              newProfile({id:'ge',name:'Google_Earth',mode:'update',hintL:'',hintR:''})];
+    for(const p of profiles) await saveProfile(p);
+  }
+  profiles.sort((a,b)=>a.name.localeCompare(b.name));
+}
+async function saveProfile(p){try{await dbPut('profiles',p);}catch(e){log('Não foi possível guardar a configuração: '+e.message,true);}}
+async function loadState(id){try{const s=await dbGet('state',id);state=new Map(s||[]);}catch(e){state=new Map();}}
+async function saveState(){try{await dbPut('state',[...state],cur.id);}catch(e){log('Não foi possível guardar o histórico: '+e.message,true);}}
+
+/* ---------------- helpers ---------------- */
+const fmtSize=n=>n<1024?n+' B':n<1048576?(n/1024).toFixed(1)+' KB':n<1073741824?(n/1048576).toFixed(1)+' MB':(n/1073741824).toFixed(2)+' GB';
+const p2=n=>String(n).padStart(2,'0');
+const fmtDate=ms=>{const d=new Date(ms);return `${p2(d.getDate())}/${p2(d.getMonth()+1)}/${d.getFullYear()} ${p2(d.getHours())}:${p2(d.getMinutes())}:${p2(d.getSeconds())}`;};
+function log(msg,err){const el=$('log');el.hidden=false;const d=document.createElement('div');if(err)d.className='e';d.textContent=fmtDate(Date.now()).slice(11)+'  '+msg;el.appendChild(d);el.scrollTop=el.scrollHeight;}
+function globs(text){return text.split('\n').map(s=>s.trim()).filter(Boolean).map(g=>{const rx=new RegExp('^'+g.replace(/\\/g,'/').replace(/[.+^${}()|[\]]/g,'\\$&').replace(/\*/g,'.*').replace(/\?/g,'.')+'$','i');return {rx,path:g.includes('/')||g.includes('\\')};});}
+const excluded=(rel,name,gl)=>gl.some(g=>g.rx.test(g.path?rel:name));
+async function perm(h,write){
+  if(!h)return false; const o={mode:write?'readwrite':'read'};
+  if(!h.queryPermission)return true;
+  if(await h.queryPermission(o)==='granted')return true;
+  return (await h.requestPermission(o))==='granted';
+}
+
+/* ---------------- scan + compare ---------------- */
+async function scan(dir,prefix,out,gl,tick){
+  for await(const [name,h] of dir.entries()){
+    if(stop)return;
+    const rel=prefix+name;
+    if(h.kind==='directory'){ if(name===TRASH&&!prefix)continue; if(excluded(rel,name,gl))continue; await scan(h,rel+'/',out,gl,tick); }
+    else{ if(excluded(rel,name,gl))continue;
+      try{const f=await h.getFile(); out.set(rel.toLowerCase(),{rel,name,h,dir,size:f.size,mt:f.lastModified});}
+      catch(e){log('Não foi possível ler '+rel+': '+e.message,true);} tick(); }
+  }
+}
+const near=(a,b)=>a.size===b.size&&Math.abs(a.mt-b.mt)<=2000;
+const stOf=(l,r)=>({ls:l.size,lm:l.mt,rs:r.size,rm:r.mt});
+function decide(row,mode){
+  const {l,r,st}=row; row.note='';
+  const lCh=l&&(!st||l.size!==st.ls||l.mt!==st.lm), rCh=r&&(!st||r.size!==st.rs||r.mt!==st.rm);
+  if(l&&r){
+    if((st&&!lCh&&!rCh)||near(l,r))return 'E';
+    if(mode==='mirror')return 'R';
+    if(mode==='update'){ if(st?(lCh&&(!rCh||l.mt>r.mt)):(l.mt>r.mt+2000))return 'R'; row.note=rCh&&st?'Alterado só à direita':'A direita é mais recente'; return 'N'; }
+    if(st&&lCh&&!rCh)return 'R';
+    if(st&&rCh&&!lCh)return 'L';
+    row.note=st?'Alterado dos dois lados: ganha o mais recente':'Sem histórico: ganha o mais recente';
+    return l.mt>=r.mt?'R':'L';
+  }
+  if(l){ if(mode!=='two')return 'R';
+    if(st){ if(!lCh)return 'DL'; row.note='Alterado à esquerda e apagado à direita'; } return 'R'; }
+  if(mode==='mirror')return 'DR';
+  if(mode==='update'){row.note='Só existe à direita';return 'N';}
+  if(st){ if(!rCh)return 'DR'; row.note='Alterado à direita e apagado à esquerda'; } return 'L';
+}
+async function sameContent(a,b){
+  const fa=await a.h.getFile(), fb=await b.h.getFile(); if(fa.size!==fb.size)return false;
+  const CH=8<<20;
+  for(let o=0;o<fa.size;o+=CH){ if(stop)return false;
+    const [x,y]=await Promise.all([fa.slice(o,o+CH).arrayBuffer(),fb.slice(o,o+CH).arrayBuffer()]);
+    const u=new Uint8Array(x),v=new Uint8Array(y); for(let i=0;i<u.length;i++)if(u[i]!==v[i])return false; }
+  return true;
+}
+async function compare(){
+  if(busy||!cur)return; if(!cur.L||!cur.R){setStatus('Escolha primeiro as duas pastas.');return;}
+  setBusy(true); rows=[]; compared=false; render();
+  try{
+    if(!(await perm(cur.L,cur.mode==='two'))||!(await perm(cur.R,true))){setStatus('Sem autorização para aceder às pastas.');return;}
+    if(await cur.L.isSameEntry(cur.R)){setStatus('As duas pastas são a mesma.');return;}
+    await loadState(cur.id);
+    const gl=globs(cur.exclude), L=new Map(), R=new Map(); let n=0;
+    const tick=()=>{if(++n%200===0)setStatus(`A ler as pastas… ${n} ficheiros`);};
+    setStatus('A ler as pastas…');
+    await scan(cur.L,'',L,gl,tick); await scan(cur.R,'',R,gl,tick);
+    if(stop){setStatus('Comparação interrompida.');return;}
+    const keys=[...new Set([...L.keys(),...R.keys()])].sort();
+    rows=keys.map(k=>{const l=L.get(k),r=R.get(k);const row={key:k,rel:(l||r).rel,l,r,st:state.get(k)};row.def=row.act=decide(row,cur.mode);return row;});
+    if(cur.content){ const cand=rows.filter(x=>x.l&&x.r&&x.act!=='E'&&x.l.size===x.r.size); let i=0;
+      for(const row of cand){ if(stop)break; setStatus(`A comparar conteúdo… ${++i} de ${cand.length}`);
+        try{ if(await sameContent(row.l,row.r)){row.def=row.act='E';row.note='';row.st=null;} }catch(e){log('Conteúdo de '+row.rel+': '+e.message,true);} } }
+    // files that are equal now become the reference for detecting later changes and deletions
+    let ch=false; for(const row of rows) if(row.act==='E'){const s=stOf(row.l,row.r),o=row.st; if(!o||o.ls!==s.ls||o.lm!==s.lm||o.rs!==s.rs||o.rm!==s.rm){state.set(row.key,s);row.st=s;ch=true;}}
+    for(const k of [...state.keys()]) if(!L.has(k)&&!R.has(k)){state.delete(k);ch=true;}
+    if(ch)await saveState();
+    compared=true;
+  }catch(e){log('Erro na comparação: '+e.message,true);setStatus('Erro na comparação: '+e.message);}
+  finally{setBusy(false);render();}
+}
+
+/* ---------------- sync ---------------- */
+async function dirFor(root,rel,create){const parts=rel.split('/');parts.pop();let d=root;for(const p of parts)d=await d.getDirectoryHandle(p,{create});return d;}
+async function copyFile(src,root,rel,onBytes){
+  const dir=await dirFor(root,rel,true), name=rel.split('/').pop();
+  const fh=await dir.getFileHandle(name,{create:true}); const f=await src.h.getFile(); const w=await fh.createWritable();
+  try{ const rd=f.stream().getReader(); for(;;){const {done,value}=await rd.read(); if(done)break; await w.write(value); onBytes(value.byteLength); if(stop){throw new Error('interrompido');}} await w.close(); }
+  catch(e){try{await w.abort();}catch(_){} throw e;}
+  const nf=await fh.getFile(); if(nf.size!==f.size)throw new Error('tamanho final diferente do original');
+  return {src:{size:f.size,mt:f.lastModified},dst:{size:nf.size,mt:nf.lastModified}};
+}
+async function pruneEmpty(root,rel){
+  const parts=rel.split('/');parts.pop();
+  while(parts.length){ try{const parent=await dirFor(root,parts.join('/')+'/x',false); let empty=true; for await(const _ of parent.keys()){empty=false;break;}
+      if(!empty)return; const name=parts.pop(); const up=await dirFor(root,parts.concat(name).join('/'),false); await up.removeEntry(name);}catch(e){return;} }
+}
+async function removeFile(ent,root,rel,stamp){
+  if(cur.del==='trash') await copyFile(ent,root,`${TRASH}/${stamp}/${rel}`,()=>{});
+  await ent.dir.removeEntry(ent.name); await pruneEmpty(root,rel);
+}
+async function sync(){
+  if(busy||!compared)return; const todo=rows.filter(r=>'RL'.includes(r.act)||r.act==='DL'||r.act==='DR'); if(!todo.length)return;
+  setBusy(true);
+  try{
+    const needL=todo.some(r=>r.act==='L'||r.act==='DL');
+    if(!(await perm(cur.L,needL))||!(await perm(cur.R,true))){setStatus('Sem autorização para escrever nas pastas.');return;}
+    const total=todo.reduce((s,r)=>s+(r.act==='R'?r.l.size:r.act==='L'?r.r.size:0),0); let done=0,ok=0,bad=0;
+    const d=new Date(), stamp=`${d.getFullYear()}-${p2(d.getMonth()+1)}-${p2(d.getDate())}_${p2(d.getHours())}${p2(d.getMinutes())}${p2(d.getSeconds())}`;
+    let lastUi=0; const prog=()=>{P.done=done;P.n=ok+bad; const n=performance.now(); if(n-lastUi<250)return; lastUi=n; setStatus(`A sincronizar… ${ok+bad} de ${todo.length} ficheiros`,total?done/total:(ok+bad)/todo.length);};
+    pvOpen(total,todo.length);
+    log(`Início: ${cur.name} — ${todo.length} operações, ${fmtSize(total)}`);
+    for(const row of todo){ if(stop)break; const tRow=performance.now(); P.file=(row.act==='L'?'← ':row.act==='R'?'→ ':'✕ ')+row.rel; prog();
+      try{
+        if(row.act==='R'){const m=await copyFile(row.l,cur.R,row.rel,b=>{done+=b;prog();}); state.set(row.key,{ls:m.src.size,lm:m.src.mt,rs:m.dst.size,rm:m.dst.mt});}
+        else if(row.act==='L'){const m=await copyFile(row.r,cur.L,row.rel,b=>{done+=b;prog();}); state.set(row.key,{ls:m.dst.size,lm:m.dst.mt,rs:m.src.size,rm:m.src.mt});}
+        else if(row.act==='DL'){await removeFile(row.l,cur.L,row.rel,stamp); state.delete(row.key);}
+        else if(row.act==='DR'){await removeFile(row.r,cur.R,row.rel,stamp); state.delete(row.key);}
+        row.done=true; ok++; pvItem(row,true,performance.now()-tRow);
+      }catch(e){row.err=true; bad++; pvItem(row,false,performance.now()-tRow); log(`${row.rel}: ${e.message}`,true); if(!(stop&&/interrompido/.test(e.message||'')))evAdd(row.rel,row.act,e);}
+    }
+    await saveState();
+    cur.last=Date.now(); await saveProfile(cur); renderProfiles();
+    P.done=done;P.n=ok+bad; pvEnd(ok,bad,stop); evFinal();
+    log(`Fim: ${ok} concluídas, ${bad} com erro${stop?' (interrompido)':''}`,bad>0);
+    setBusy(false);
+    if(!stop&&!bad){await compare(); $('status').insertAdjacentHTML('afterbegin',`<span class="msg ok">✔ Sincronização concluída: ${ok} ${ok===1?'operação':'operações'}</span>`);}
+    else{render(); setStatus(`Sincronização terminada com ${bad} erro(s) em ${ok+bad} operações. Veja o registo e volte a Comparar.`);}
+  }catch(e){log('Erro na sincronização: '+e.message,true);setStatus('Erro: '+e.message);clearInterval(P.timer);$('pvStop').hidden=true;$('pvClose').hidden=false;$('pvRes').textContent='Erro: '+e.message;$('pvRes').className='res bad';evAdd('(sincronização)','—',e);evFinal();}
+  finally{setBusy(false);}
+}
+
+/* ---------------- progress window with speed chart ---------------- */
+const P={done:0,total:0,n:0,of:0,file:'',t0:0,last:0,lastT:0,ema:0,samples:[],timer:null,closeT:null};
+const fmtDur=s=>{s=Math.max(0,Math.round(s));const h=Math.floor(s/3600),m=Math.floor(s%3600/60),x=s%60;return (h?h+':':'')+p2(m)+':'+p2(x);};
+const fmtSpeed=b=>b>=1048576?(b/1048576).toFixed(1)+' MB/s':(b/1024).toFixed(0)+' KB/s';
+function pvOpen(total,of){
+  evReset(); clearTimeout(P.closeT); $('pvList').innerHTML=''; $('pvNone').hidden=false; $('pvCopied').textContent='0 B'; Object.assign(P,{copied:0,done:0,total,n:0,of,file:'',t0:performance.now(),last:0,lastT:performance.now(),ema:0,samples:[]});
+  $('pvTitle').textContent='A sincronizar: '+cur.name; $('pvRes').textContent=''; $('pvRes').className='res'; $('pvStop').hidden=false; $('pvClose').hidden=true; $('pv').hidden=false;
+  pvTick(); P.timer=setInterval(pvTick,400);
+}
+function pvTick(final){
+  const now=performance.now(), dt=(now-P.lastT)/1000, el=(now-P.t0)/1000;
+  if(dt>0.05){const v=(P.done-P.last)/dt; P.ema=P.samples.length?P.ema*0.6+v*0.4:v; P.samples.push({t:el,v,b:P.done,n:P.n}); P.last=P.done; P.lastT=now;}
+  const frac=P.total?P.done/P.total:(P.of?P.n/P.of:0), avg=el>0?P.done/el:0;
+  $('pvBar').style.width=(Math.min(1,frac)*100).toFixed(1)+'%'; $('pvPct').textContent=`${(Math.min(1,frac)*100).toFixed(0)}% · ${fmtSize(P.done)} de ${fmtSize(P.total)}`;
+  $('pvFile').textContent=final?'':P.file; $('pvTime').textContent=fmtDur(el); $('pvFiles').textContent=`${P.n} / ${P.of}`;
+  $('pvSpeed').textContent=final?fmtSpeed(avg):(P.total?fmtSpeed(P.ema):'—');
+  $('pvLeft').textContent=final?'00:00':(P.total&&avg>0&&P.done>0?fmtDur((P.total-P.done)/avg):'—');
+  document.querySelector('.kpi.speed .k').textContent=final?'Velocidade média':'Velocidade';
+  const remN=Math.max(0,P.of-P.n), remB=Math.max(0,P.total-P.done);
+  $('pvDone').textContent=`${P.n} (${fmtSize(P.done)})`; $('pvRem').textContent=`${remN} (${fmtSize(remB)})`;
+  pvDraw(); pvCum('pvBytes','b',Math.max(P.total,1),'--sync',fmtSize,'pvCapB',`${fmtSize(P.done)} de ${fmtSize(P.total)}`); pvCum('pvItems','n',Math.max(P.of,1),'--cmp',v=>String(Math.round(v)),'pvCapI',`${P.n} de ${P.of}`);
+}
+function pvCum(id,key,max,color,fmt,capId,cap){
+  const c=$(id), dpr=window.devicePixelRatio||1, W=c.clientWidth, H=c.clientHeight; if(!W)return;
+  if(c.width!==Math.round(W*dpr)){c.width=Math.round(W*dpr);c.height=Math.round(H*dpr);}
+  const g=c.getContext('2d'); g.setTransform(dpr,0,0,dpr,0,0); g.clearRect(0,0,W,H);
+  const cs=getComputedStyle(document.documentElement), col=n=>cs.getPropertyValue(n).trim();
+  const padL=64,padR=10,padT=8,padB=18, w=W-padL-padR, h=H-padT-padB, s=P.samples, tMax=Math.max(10,s.length?s[s.length-1].t:0);
+  g.font='11px Consolas, monospace'; g.lineWidth=1;
+  [0,.5,1].forEach(f=>{const y=padT+h-h*f; g.strokeStyle=col('--line'); g.beginPath(); g.moveTo(padL,y); g.lineTo(padL+w,y); g.stroke(); g.fillStyle=col('--muted'); g.textAlign='right'; g.textBaseline='middle'; g.fillText(fmt(max*f),padL-6,y);});
+  g.textBaseline='top'; g.fillStyle=col('--muted'); g.textAlign='left'; g.fillText('00:00',padL,padT+h+4); g.textAlign='right'; g.fillText(fmtDur(tMax),padL+w,padT+h+4);
+  $(capId).textContent=cap; if(!s.length)return;
+  const X=t=>padL+w*t/tMax, Y=v=>padT+h-h*Math.min(v,max)/max;
+  g.beginPath(); g.moveTo(padL,padT+h); s.forEach(p=>g.lineTo(X(p.t),Y(p[key]))); g.lineTo(X(s[s.length-1].t),padT+h); g.closePath(); g.globalAlpha=.3; g.fillStyle=col(color); g.fill(); g.globalAlpha=1;
+  g.beginPath(); g.moveTo(padL,padT+h); s.forEach(p=>g.lineTo(X(p.t),Y(p[key]))); g.strokeStyle=col(color); g.lineWidth=2; g.lineJoin='round'; g.stroke();
+}
+function pvItem(row,ok,ms){
+  const size=row.act==='R'?row.l.size:row.act==='L'?row.r.size:(row.l||row.r).size, del=row.act==='DL'||row.act==='DR';
+  if(ok&&!del)P.copied=(P.copied||0)+size;
+  const sym=!ok?'✕ erro':row.act==='R'?'→':row.act==='L'?'←':'✕ eliminado', cls=!ok?'X':del?'D':row.act;
+  $('pvNone').hidden=true; const tb=$('pvList'), box=$('pvListBox'), stick=box.scrollTop+box.clientHeight>=box.scrollHeight-30;
+  tb.insertAdjacentHTML('beforeend',`<tr class="${ok?'':'bad'}"><td class="op ${cls}">${sym}</td><td class="path" title="${esc(row.rel)}">${esc(row.rel)}</td><td class="sz">${fmtSize(size)}</td><td class="tm">${ms<1000?Math.round(ms)+' ms':fmtDur(ms/1000)}</td></tr>`);
+  while(tb.rows.length>1000)tb.deleteRow(0);
+  if(stick)box.scrollTop=box.scrollHeight; $('pvCopied').textContent=fmtSize(P.copied||0);
+}
+/* ---------------- error window ---------------- */
+const OPNAME={R:'Copiar para a direita',L:'Copiar para a esquerda',DL:'Eliminar à esquerda',DR:'Eliminar à direita'};
+function explain(e){
+  const n=e&&e.name, m=(e&&e.message)||'';
+  if(n==='NoModificationAllowedError'||/locked|in use|being used/i.test(m))return 'O ficheiro está aberto ou bloqueado por outro programa (por exemplo o QGIS). Feche-o e volte a sincronizar.';
+  if(n==='NotAllowedError'||n==='SecurityError')return 'Sem permissão para ler ou escrever este ficheiro ou pasta (autorização recusada, ficheiro só de leitura ou pasta protegida).';
+  if(n==='NotFoundError')return 'O ficheiro ou a pasta já não existe (foi movido, apagado, ou a unidade de rede ficou indisponível).';
+  if(n==='QuotaExceededError')return 'Não há espaço suficiente no disco de destino.';
+  if(n==='NotReadableError')return 'Não foi possível ler o ficheiro de origem (em uso, danificado ou a rede falhou).';
+  if(n==='InvalidModificationError'||n==='TypeMismatchError')return 'No destino existe uma pasta com o nome do ficheiro (ou o contrário), ou a pasta não está vazia.';
+  if(n==='InvalidStateError')return 'O ficheiro foi alterado enquanto era copiado. Volte a Comparar e a sincronizar.';
+  if(n==='AbortError'||/interrompido/.test(m))return 'A cópia foi interrompida antes de terminar; o ficheiro de destino não foi alterado.';
+  if(/tamanho final/.test(m))return 'A cópia ficou com um tamanho diferente do original; o ficheiro pode ter mudado durante a cópia.';
+  if(n==='TypeError'&&/name/i.test(m))return 'O nome do ficheiro ou da pasta não é aceite pelo browser (caracteres ou nome reservado).';
+  return 'Erro inesperado ao tratar este ficheiro.';
+}
+let evRows=[], evDismissed=false;
+function evReset(){evRows=[];evDismissed=false;$('ev').hidden=true;$('evBody').innerHTML='';$('pvWarn').hidden=true;$('evCopied').textContent='';}
+function evAdd(rel,act,e){
+  const r={rel,op:OPNAME[act]||act,why:explain(e),raw:((e&&e.name)?e.name+': ':'')+((e&&e.message)||String(e))}; evRows.push(r);
+  $('evBody').insertAdjacentHTML('beforeend',`<tr><td class="path">${esc(r.rel)}</td><td>${esc(r.op)}</td><td class="why">${esc(r.why)}</td><td class="raw">${esc(r.raw)}</td></tr>`);
+  evHead(false); $('pvWarn').hidden=false; $('pvWarn').textContent=`⚠ Avisos: ${evRows.length}`;
+  if(!evDismissed)$('ev').hidden=false;
+}
+function evHead(final){ $('evTitle').textContent=`Erros na sincronização (${evRows.length})`;
+  $('evSub').textContent=final?'A sincronização terminou. Os ficheiros abaixo não foram tratados; os restantes foram.':'A sincronização continua com os restantes ficheiros. Pode fechar esta janela; volta a abrir no fim.'; }
+function evFinal(){ if(evRows.length){evHead(true);$('ev').hidden=false;$('evClose').focus();} }
+
+function pvDraw(){
+  const c=$('pvChart'), dpr=window.devicePixelRatio||1, W=c.clientWidth, H=c.clientHeight; if(!W)return;
+  if(c.width!==Math.round(W*dpr)){c.width=Math.round(W*dpr);c.height=Math.round(H*dpr);}
+  const g=c.getContext('2d'); g.setTransform(dpr,0,0,dpr,0,0); g.clearRect(0,0,W,H);
+  const cs=getComputedStyle(document.documentElement), col=n=>cs.getPropertyValue(n).trim();
+  const padL=80,padR=24,padT=8,padB=20, w=W-padL-padR, h=H-padT-padB, s=P.samples;
+  const tMax=Math.max(10,s.length?s[s.length-1].t:0), raw=Math.max(1024*100,...s.map(x=>x.v));
+  const step=Math.pow(2,Math.ceil(Math.log2(raw/4))), vMax=step*4;
+  g.font='11px Consolas, monospace'; g.textBaseline='middle'; g.lineWidth=1;
+  for(let i=0;i<=4;i++){const y=padT+h-h*i/4; g.strokeStyle=col('--line'); g.beginPath(); g.moveTo(padL,y); g.lineTo(padL+w,y); g.stroke(); g.fillStyle=col('--muted'); g.textAlign='right'; g.fillText(fmtSpeed(step*i),padL-6,y);}
+  g.textAlign='center'; g.textBaseline='top'; for(let i=0;i<=4;i++){g.fillStyle=col('--muted'); g.fillText(fmtDur(tMax*i/4),padL+w*i/4,padT+h+5);}
+  if(s.length<2){$('pvCap').textContent='';return;}
+  const X=t=>padL+w*t/tMax, Y=v=>padT+h-h*Math.min(v,vMax)/vMax;
+  g.beginPath(); g.moveTo(X(s[0].t),padT+h); s.forEach(p=>g.lineTo(X(p.t),Y(p.v))); g.lineTo(X(s[s.length-1].t),padT+h); g.closePath();
+  g.globalAlpha=.22; g.fillStyle=col('--pick'); g.fill(); g.globalAlpha=1;
+  g.beginPath(); s.forEach((p,i)=>i?g.lineTo(X(p.t),Y(p.v)):g.moveTo(X(p.t),Y(p.v))); g.strokeStyle=col('--pick'); g.lineWidth=2; g.lineJoin='round'; g.stroke();
+  const el=s[s.length-1].t, avg=el>0?P.done/el:0;
+  g.setLineDash([5,4]); g.strokeStyle=col('--warn'); g.lineWidth=1.5; g.beginPath(); g.moveTo(padL,Y(avg)); g.lineTo(padL+w,Y(avg)); g.stroke(); g.setLineDash([]);
+  const lp=s[s.length-1]; g.fillStyle=col('--pick'); g.beginPath(); g.arc(X(lp.t),Y(lp.v),4,0,7); g.fill();
+  $('pvCap').textContent=`média ${fmtSpeed(avg)} (tracejado) · máximo ${fmtSpeed(Math.max(...s.map(x=>x.v)))}`;
+}
+function pvEnd(ok,bad,stopped){
+  clearInterval(P.timer); pvTick(true);
+  const el=(performance.now()-P.t0)/1000;
+  $('pvTitle').textContent=stopped?'Sincronização interrompida':bad?'Sincronização terminada com erros':'Sincronização concluída';
+  $('pvRes').textContent=`${ok} ${ok===1?'operação concluída':'operações concluídas'}${bad?`, ${bad} com erro`:''} · ${fmtSize(P.copied||0)} copiados em ${fmtDur(el)}`;
+  $('pvRes').className='res '+(bad||stopped?'bad':'ok'); $('pvStop').hidden=true; $('pvClose').hidden=false; $('pvClose').focus();
+}
+
+/* ---------------- confirmation before syncing ---------------- */
+const MODE_TXT={two:'Duas vias ⇄',update:'Atualizar → (copia novos e alterados, não apaga)',mirror:'Espelho → (a direita fica igual à esquerda)'};
+function openConfirm(){
+  if(busy||!compared) return; const todo=rows.filter(r=>['R','L','DL','DR'].includes(r.act)&&!r.done); if(!todo.length) return;
+  const g={R:[],L:[],D:[]}; todo.forEach(r=>{ (r.act==='R'?g.R:r.act==='L'?g.L:g.D).push(r); });
+  const bytes=a=>a.reduce((s,r)=>s+(r.act==='R'?r.l.size:r.act==='L'?r.r.size:(r.l||r.r).size),0);
+  const over=todo.filter(r=>(r.act==='R'&&r.r)||(r.act==='L'&&r.l)), conf=todo.filter(r=>/dois lados|Sem histórico|apagado/.test(r.note||''));
+  $('cfTitle').textContent='Confirmar sincronização: '+cur.name;
+  $('cfMeta').innerHTML=`<b>Tipo</b><span style="font-family:var(--sans)">${esc(MODE_TXT[cur.mode]||cur.mode)}</span><b>Esquerda</b><span>${esc(cur.L?cur.L.name:'')}${cur.hintL?' · '+esc(cur.hintL):''}</span><b>Direita</b><span>${esc(cur.R?cur.R.name:'')}${cur.hintR?' · '+esc(cur.hintR):''}</span>`;
+  $('cfPills').innerHTML=`<span class="pill R${g.R.length?'':' zero'}">copiar → ${g.R.length} · ${fmtSize(bytes(g.R))}</span><span class="pill L${g.L.length?'':' zero'}">← copiar ${g.L.length} · ${fmtSize(bytes(g.L))}</span><span class="pill D${g.D.length?'':' zero'}">✕ eliminar ${g.D.length}</span><span class="pill N">total ${todo.length} ${todo.length===1?'ficheiro':'ficheiros'} · ${fmtSize(bytes(g.R)+bytes(g.L))} a copiar</span>`;
+  const w=[];
+  if(over.length) w.push(`<div>${over.length} ${over.length===1?'ficheiro existente vai ser substituído':'ficheiros existentes vão ser substituídos'} no destino.</div>`);
+  if(conf.length) w.push(`<div class="red">${conf.length} ${conf.length===1?'ficheiro tem':'ficheiros têm'} conflito (alterado dos dois lados, sem histórico ou apagado de um lado): confirme a ação proposta.</div>`);
+  if(g.D.length) w.push(`<div class="${cur.del==='perm'?'red':''}">${g.D.length} ${g.D.length===1?'ficheiro vai ser eliminado':'ficheiros vão ser eliminados'}: ${cur.del==='perm'?'APAGADOS DEFINITIVAMENTE, sem cópia.':'movidos para a pasta _apagados (pode recuperá-los).'}</div>`);
+  $('cfWarn').innerHTML=w.join('');
+  const p2d=ms=>fmtDate(ms).slice(0,16);
+  const line=r=>{ const src=r.act==='R'?r.l:r.act==='L'?r.r:(r.l||r.r), dst=r.act==='R'?r.r:r.act==='L'?r.l:null; let what, cls='';
+    if(r.act==='DL'||r.act==='DR'){ what=`Eliminar ${r.act==='DL'?'à esquerda':'à direita'}${cur.del==='perm'?' (definitivo)':' → _apagados'}`; cls='over'; }
+    else if(dst){ what=`Substitui a versão do destino (${fmtSize(dst.size)}, ${p2d(dst.mt)})`; cls='over'; }
+    else what=`Novo no ${r.act==='R'?'lado direito':'lado esquerdo'}`;
+    if(/dois lados|Sem histórico|apagado/.test(r.note||'')){ what=r.note+' · '+what; cls='conf'; }
+    return `<tr><td class="mid"><span class="act ${r.act}" style="display:inline-block">${LABEL[r.act]}</span></td><td class="path" title="${esc(r.rel)}">${esc(r.rel)}</td><td class="num">${fmtSize(src.size)}</td><td>${p2d(src.mt)}</td><td class="what ${cls}">${esc(what)}</td></tr>`; };
+  const sec=(title,a)=>a.length?`<tr class="sec"><td colspan="5">${title} (${a.length})</td></tr>`+a.map(line).join(''):'';
+  $('cfBody').innerHTML=sec('Copiar da esquerda para a direita →',g.R)+sec('← Copiar da direita para a esquerda',g.L)+sec('✕ Eliminar',g.D);
+  $('cf').hidden=false; $('cfBack').focus();
+}
+function closeConfirm(){ $('cf').hidden=true; $('bSync').focus(); }
+
+/* ---------------- UI ---------------- */
+const LABEL={R:'copiar →',L:'← copiar',DL:'✕ esquerda',DR:'direita ✕',N:'não fazer',E:'igual'};
+const TITLE={R:'Copiar da esquerda para a direita',L:'Copiar da direita para a esquerda',DL:'Eliminar à esquerda',DR:'Eliminar à direita',N:'Não fazer nada',E:'Ficheiros iguais'};
+function options(row){ if(row.l&&row.r)return ['R','L','N']; if(row.l)return ['R','DL','N']; return ['L','DR','N']; }
+function setBusy(b){busy=b; if(b)stop=false; $('bCompare').disabled=b; $('bStop').hidden=!b; $('bL').disabled=$('bR').disabled=b; updateSyncBtn();}
+function updateSyncBtn(){$('bSync').disabled=busy||!compared||!rows.some(r=>!['E','N'].includes(r.act)&&!r.done);}
+function setStatus(text,frac){$('status').innerHTML=esc(text)+(frac!==undefined?` <progress max="1" value="${Math.min(1,frac)}"></progress>`:'');}
+function stats(){
+  const c={R:0,L:0,D:0,N:0,E:0}; let bytes=0;
+  rows.forEach(r=>{ if(r.act==='DL'||r.act==='DR')c.D++; else c[r.act]++; if(r.act==='R')bytes+=r.l.size; if(r.act==='L')bytes+=r.r.size; });
+  if(!rows.length){setStatus(compared?'As duas pastas estão vazias.':'');return;}
+  const todo=c.R+c.L+c.D, pill=(k,txt,n)=>`<span class="pill ${k}${n?'':' zero'}">${txt} ${n}</span>`;
+  const msg=todo?`<span class="msg todo">${todo} ${todo===1?'operação':'operações'} por sincronizar</span>`
+    :c.N?`<span class="msg info">Nada para sincronizar neste modo · ${c.N} ${c.N===1?'ficheiro fica':'ficheiros ficam'} sem ação</span>`
+    :'<span class="msg ok">✔ As pastas estão sincronizadas</span>';
+  $('status').innerHTML=msg+pill('R','copiar →',c.R)+pill('L','← copiar',c.L)+pill('D','✕ eliminar',c.D)+(todo?`<span><b>${fmtSize(bytes)}</b> a copiar</span>`:'')+pill('N','sem ação',c.N)+pill('E','= iguais',c.E);
+}
+function describe(r){
+  // where the file is / which side is newer, with an arrow pointing to that side
+  if(r.l&&!r.r)return ['toL','← ',r.note||'Só existe à esquerda',''];
+  if(r.r&&!r.l)return ['toR','',r.note||'Só existe à direita',' →'];
+  if(r.act==='E')return ['','','',''];
+  if(/dois lados|Sem histórico/.test(r.note))return ['both','⇄ ',r.note,''];
+  if(r.l.mt>r.r.mt)return ['toL','← ',r.note||'Esquerda mais recente',''];
+  return ['toR','',r.note||'Direita mais recente',' →'];
+}
+function render(){
+  const showEq=$('showEq').checked, list=rows.filter(r=>showEq||r.act!=='E'||r.def!=='E'), MAX=3000;
+  const cell=e=>e?`<td class="num">${fmtSize(e.size)}</td><td>${fmtDate(e.mt)}</td>`:'<td class="none num">—</td><td class="none">—</td>';
+  let h='<thead><tr><th>Caminho relativo</th><th class="num">Tamanho</th><th>Data (esquerda)</th><th class="mid">Ação</th><th class="num">Tamanho</th><th>Data (direita)</th><th>Nota</th></tr></thead><tbody>';
+  if(!list.length) h+=`<tr><td colspan="7" class="empty">${!compared?(cur&&cur.L&&cur.R?'Carregue em Comparar para ver as diferenças entre as duas pastas.':'Escolha a pasta da esquerda e a da direita com os botões Procurar e depois carregue em Comparar.'):rows.length?'Não há diferenças: as pastas estão sincronizadas.':'As duas pastas estão vazias.'}</td></tr>`;
+  list.slice(0,MAX).forEach(r=>{ const i=rows.indexOf(r);
+    h+=`<tr><td class="path" title="${esc(r.rel)}">${esc(r.rel)}</td>${cell(r.l)}<td class="mid"><button type="button" class="act ${r.act}${r.err?' err':''}" data-i="${i}" title="${TITLE[r.act]}${r.act==='E'?'':' — clique para alterar'}" ${r.act==='E'||r.done?'disabled':''}>${r.done?'feito':LABEL[r.act]}</button></td>${cell(r.r)}${(()=>{if(r.err)return '<td class="note both">Erro: ver registo</td>';const [k,a,txt,z]=describe(r);return `<td class="note ${k}">${a?`<span class="ar">${a}</span>`:''}${esc(txt)}${z?`<span class="ar">${z}</span>`:''}</td>`;})()}</tr>`; });
+  if(list.length>MAX) h+=`<tr><td colspan="7" class="empty">A mostrar ${MAX} de ${list.length} linhas. A sincronização trata todas.</td></tr>`;
+  $('grid').innerHTML=h+'</tbody>'; if(compared||!rows.length)stats(); updateSyncBtn();
+}
+function renderProfiles(){
+  $('profiles').innerHTML=profiles.map(p=>`<button type="button" data-id="${p.id}" aria-current="${cur&&p.id===cur.id}"><span>${esc(p.name)}</span><small>${p.last?'Última sincronização: '+fmtDate(p.last).slice(0,16):'Ainda não sincronizado'}</small></button>`).join('');
+}
+function renderProfile(){
+  $('pName').value=cur.name; $('pMode').value=cur.mode; $('pDelMode').value=cur.del; $('pContent').checked=cur.content; $('pEx').value=cur.exclude; $('pHL').value=cur.hintL; $('pHR').value=cur.hintR;
+  $('arrow').textContent=cur.mode==='two'?'⇄':'→';
+  for(const s of ['L','R']){const h=cur[s], n=$('n'+s); n.textContent=h?h.name:'Nenhuma pasta escolhida'; n.classList.toggle('none',!h); $('h'+s).textContent=cur['hint'+s]?(h?'Esperado: ':'Escolher: ')+cur['hint'+s]:'';}
+}
+async function selectProfile(id){ cur=profiles.find(p=>p.id===id)||profiles[0]; rows=[]; compared=false; try{localStorage.setItem('sp-cur',cur.id);}catch(e){} renderProfiles(); renderProfile(); render(); setStatus(''); }
+async function pick(side){
+  try{ const h=await window.showDirectoryPicker({id:(cur.id+side).replace(/[^a-z0-9]/gi,'').slice(0,32),mode:side==='L'&&cur.mode!=='two'?'read':'readwrite'});
+    cur[side]=h; await saveProfile(cur); rows=[]; compared=false; renderProfile(); render(); }
+  catch(e){ if(e.name!=='AbortError')log('Não foi possível abrir a pasta: '+e.message,true); }
+}
+function bind(){
+  $('profiles').addEventListener('click',e=>{const b=e.target.closest('[data-id]'); if(b&&!busy)selectProfile(b.dataset.id);});
+  $('pNew').addEventListener('click',async()=>{const p=newProfile({}); profiles.push(p); await saveProfile(p); selectProfile(p.id); $('pName').focus(); $('pName').select();});
+  let delArm=0; $('pDel').addEventListener('click',async()=>{ if(busy)return; if(Date.now()-delArm>4000){delArm=Date.now(); $('pDel').textContent='Confirmar apagar'; setTimeout(()=>{$('pDel').textContent='Apagar';},4000); return;}
+    delArm=0; $('pDel').textContent='Apagar'; await dbDel('profiles',cur.id); await dbDel('state',cur.id); profiles=profiles.filter(p=>p!==cur); if(!profiles.length){const p=newProfile({});profiles.push(p);await saveProfile(p);} selectProfile(profiles[0].id);});
+  const upd=async(recalc)=>{cur.name=$('pName').value.trim()||'Sem nome'; cur.mode=$('pMode').value; cur.del=$('pDelMode').value; cur.content=$('pContent').checked; cur.exclude=$('pEx').value; cur.hintL=$('pHL').value.trim(); cur.hintR=$('pHR').value.trim();
+    await saveProfile(cur); renderProfiles(); $('arrow').textContent=cur.mode==='two'?'⇄':'→'; for(const s of ['L','R'])$('h'+s).textContent=cur['hint'+s]?(cur[s]?'Esperado: ':'Escolher: ')+cur['hint'+s]:'';
+    if(recalc==='mode'&&compared){rows.forEach(r=>{if(!r.done&&r.def!=='E'||r.act!=='E'){ if(r.def!=='E'){r.def=r.act=decide(r,cur.mode);} }});render();}
+    if(recalc==='rescan'){rows=[];compared=false;render();setStatus('');}};
+  ['pName','pHL','pHR'].forEach(id=>$(id).addEventListener('change',()=>upd()));
+  $('pDelMode').addEventListener('change',()=>upd()); $('pMode').addEventListener('change',()=>upd('mode'));
+  $('pContent').addEventListener('change',()=>upd('rescan')); $('pEx').addEventListener('change',()=>upd('rescan'));
+  let rsArm=0; $('pReset').addEventListener('click',async()=>{ if(Date.now()-rsArm>4000){rsArm=Date.now();$('pReset').textContent='Confirmar: esquecer histórico';setTimeout(()=>{$('pReset').textContent='Esquecer histórico desta configuração';},4000);return;}
+    rsArm=0; $('pReset').textContent='Esquecer histórico desta configuração'; await dbDel('state',cur.id); state=new Map(); rows=[]; compared=false; render(); setStatus('Histórico apagado.');});
+  $('bL').addEventListener('click',()=>pick('L')); $('bR').addEventListener('click',()=>pick('R'));
+  $('bCompare').addEventListener('click',compare); $('bSync').addEventListener('click',openConfirm);
+  $('cfBack').addEventListener('click',closeConfirm); $('cfOk').addEventListener('click',()=>{ $('cf').hidden=true; sync(); });
+  document.addEventListener('keydown',e=>{ if(e.key==='Escape'&&!$('cf').hidden) closeConfirm(); }); $('bStop').addEventListener('click',()=>{stop=true;});
+  $('evClose').addEventListener('click',()=>{evDismissed=true;$('ev').hidden=true;}); $('pvWarn').addEventListener('click',()=>{$('ev').hidden=false;});
+  $('evCopy').addEventListener('click',()=>{const txt=evRows.map(r=>[r.rel,r.op,r.why,r.raw].join('\t')).join('\n'); (navigator.clipboard?navigator.clipboard.writeText(txt):Promise.reject()).then(()=>{$('evCopied').textContent='Lista copiada';$('evCopied').className='res ok';}).catch(()=>{$('evCopied').textContent='Não foi possível copiar';$('evCopied').className='res bad';});});
+  $('pvStop').addEventListener('click',()=>{stop=true;}); $('pvClose').addEventListener('click',()=>{clearTimeout(P.closeT);$('pv').hidden=true;});
+  $('showEq').addEventListener('change',render);
+  $('grid').addEventListener('click',e=>{const b=e.target.closest('.act'); if(!b||busy)return; const r=rows[+b.dataset.i]; if(!r||r.done||r.act==='E')return; const o=options(r); r.act=o[(o.indexOf(r.act)+1)%o.length]; r.err=false;
+    b.className='act '+r.act; b.textContent=LABEL[r.act]; b.title=TITLE[r.act]+' — clique para alterar'; stats(); updateSyncBtn();});
+}
+/* ---------------- installable app ---------------- */
+let deferredInstall=null;
+window.addEventListener('beforeinstallprompt',e=>{ e.preventDefault(); deferredInstall=e; $('bInstall').hidden=false; });
+window.addEventListener('appinstalled',()=>{ deferredInstall=null; $('bInstall').hidden=true; });
+if('serviceWorker' in navigator&&location.protocol.startsWith('http')) window.addEventListener('load',()=>{ navigator.serviceWorker.register('sw.js').catch(()=>{}); });
+(async function init(){
+  $('unsupported').hidden=SUPPORTED; if(!SUPPORTED){$('bL').disabled=$('bR').disabled=$('bCompare').disabled=true;}
+  $('bInstall').addEventListener('click',async()=>{ if(!deferredInstall) return; deferredInstall.prompt(); try{ await deferredInstall.userChoice; }catch(e){} deferredInstall=null; $('bInstall').hidden=true; });
+  bind(); await loadProfiles(); let id=null; try{id=localStorage.getItem('sp-cur');}catch(e){} await selectProfile(id||'gia');
+  window.__sp={setDirs:async(l,r)=>{cur.L=l;cur.R=r;await saveProfile(cur);renderProfile();},compare,sync,rows:()=>rows,cur:()=>cur,select:selectProfile};
+})();
+</script>
+</body>
+</html>
